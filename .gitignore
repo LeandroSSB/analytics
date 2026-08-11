@@ -86,6 +86,10 @@ plausible-report.xml
 
 .env
 
+# Plausible self-host production env (contains SECRET_KEY_BASE — never commit)
+.env.production
+.env.*.local
+
 # Geolocation databases
 /priv/geodb/*.mmdb
 /priv/geodb/*.mmdb.gz

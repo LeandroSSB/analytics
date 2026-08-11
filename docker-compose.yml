@@ -1,0 +1,73 @@
+# container_name + explicit volume `name:` pin the names so deploy scripts,
+# backup scripts, and `docker exec` work regardless of the compose project name
+# (the project defaults to the dir name, which would otherwise prefix everything
+# with `analytics-`). Matches the megalan convention (marmoaria-api, etc.).
+
+services:
+  plausible_db:
+    image: postgres:16-alpine
+    container_name: plausible_db
+    restart: always
+    volumes:
+      - plausible-pg:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      start_period: 1m
+
+  plausible_events_db:
+    image: clickhouse/clickhouse-server:25.11.5.8-alpine
+    container_name: plausible_events_db
+    restart: always
+    volumes:
+      - plausible-ch:/var/lib/clickhouse
+      - plausible-ch-logs:/var/log/clickhouse-server
+      - ./clickhouse/logs.xml:/etc/clickhouse-server/config.d/logs.xml:ro
+      - ./clickhouse/ipv4-only.xml:/etc/clickhouse-server/config.d/ipv4-only.xml:ro
+      - ./clickhouse/low-resources.xml:/etc/clickhouse-server/config.d/low-resources.xml:ro
+      - ./clickhouse/default-profile-low-resources-overrides.xml:/etc/clickhouse-server/users.d/default-profile-low-resources-overrides.xml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      - CLICKHOUSE_SKIP_USER_SETUP=1
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O - http://127.0.0.1:8123/ping || exit 1"]
+      start_period: 1m
+
+  plausible:
+    build:
+      context: .
+      args:
+        MIX_ENV: ce
+    container_name: plausible
+    restart: always
+    command: sh -c "/entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run"
+    depends_on:
+      plausible_db:
+        condition: service_healthy
+      plausible_events_db:
+        condition: service_healthy
+    volumes:
+      - plausible-data:/var/lib/plausible
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    environment:
+      - TMPDIR=/var/lib/plausible/tmp
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8000/api/health || exit 1"]
+      start_period: 3m
+
+volumes:
+  plausible-pg:
+    name: plausible-pg
+  plausible-ch:
+    name: plausible-ch
+  plausible-ch-logs:
+    name: plausible-ch-logs
+  plausible-data:
+    name: plausible-data

@@ -1,0 +1,7 @@
+# Production override: publish the app on a localhost-only high port and load secrets.
+services:
+  plausible:
+    ports:
+      - "127.0.0.1:14100:8000"
+    env_file:
+      - .env.production
